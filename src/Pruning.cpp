@@ -204,11 +204,7 @@ bool PruningEngine::pruneDeadValues(const SynthesizedSequence& partial) {
 // ObservationalPruning implementation
 
 ObservationalPruning::ObservationalPruning(const Config& config)
-    : config_(config), rng_(std::random_device{}()),
-      testInputCache_([](std::pair<size_t, size_t> p) {
-          return std::hash<size_t>{}(p.first) ^
-                 (std::hash<size_t>{}(p.second) << 1);
-      }) {}
+    : config_(config), rng_(std::random_device{}()) {}
 
 std::vector<uint64_t> ObservationalPruning::computeSignature(
     const SynthesizedSequence& seq,

@@ -236,13 +236,17 @@ bool OptimizationCache::save(const std::string& filePath) {
         for (const auto& templ : entry.sequence.templates) {
             file.write(reinterpret_cast<const char*>(&templ.opcode), sizeof(templ.opcode));
 
-            uint32_t numOperands = static_cast<uint32_t>(templ.operands.size());
+            uint32_t numOperands = static_cast<uint32_t>(templ.operandIndices.size());
             file.write(reinterpret_cast<const char*>(&numOperands), sizeof(numOperands));
-            for (int op : templ.operands) {
+            for (int op : templ.operandIndices) {
                 file.write(reinterpret_cast<const char*>(&op), sizeof(op));
             }
 
-            file.write(reinterpret_cast<const char*>(&templ.constantIndex), sizeof(templ.constantIndex));
+            uint32_t numConstIdx = static_cast<uint32_t>(templ.constantIndices.size());
+            file.write(reinterpret_cast<const char*>(&numConstIdx), sizeof(numConstIdx));
+            for (int ci : templ.constantIndices) {
+                file.write(reinterpret_cast<const char*>(&ci), sizeof(ci));
+            }
         }
 
         uint32_t numConstants = static_cast<uint32_t>(entry.sequence.constants.size());
@@ -315,12 +319,17 @@ bool OptimizationCache::load(const std::string& filePath) {
 
             uint32_t numOperands;
             file.read(reinterpret_cast<char*>(&numOperands), sizeof(numOperands));
-            templ.operands.resize(numOperands);
+            templ.operandIndices.resize(numOperands);
             for (uint32_t k = 0; k < numOperands; ++k) {
-                file.read(reinterpret_cast<char*>(&templ.operands[k]), sizeof(int));
+                file.read(reinterpret_cast<char*>(&templ.operandIndices[k]), sizeof(int));
             }
 
-            file.read(reinterpret_cast<char*>(&templ.constantIndex), sizeof(templ.constantIndex));
+            uint32_t numConstIdx;
+            file.read(reinterpret_cast<char*>(&numConstIdx), sizeof(numConstIdx));
+            templ.constantIndices.resize(numConstIdx);
+            for (uint32_t k = 0; k < numConstIdx; ++k) {
+                file.read(reinterpret_cast<char*>(&templ.constantIndices[k]), sizeof(int));
+            }
         }
 
         uint32_t numConstants;

@@ -30,13 +30,9 @@ bool Superoptimizer::matchesFilter(const llvm::Function& func) {
         return true;
     }
 
-    try {
-        std::regex pattern(config_.functionFilter);
-        return std::regex_search(func.getName().str(), pattern);
-    } catch (const std::regex_error&) {
-        return func.getName().str().find(config_.functionFilter) !=
-               std::string::npos;
-    }
+    // Try simple substring match first (exceptions disabled in LLVM build)
+    return func.getName().str().find(config_.functionFilter) !=
+           std::string::npos;
 }
 
 bool Superoptimizer::shouldStopNow() const {
@@ -345,7 +341,7 @@ std::optional<SynthesizedSequence> Superoptimizer::searchExhaustive(
 
     ConstantPool pool = getConstantPool(inst);
 
-    enumerator_->enumerateWithConstants(inst, pool, config_.maxInstructions,
+    enumerator_->enumerateWithConstants(inst.getType(), inputTypes, pool, config_.maxInstructions,
         [&](const SynthesizedSequence& candidate) -> bool {
             if (shouldStopNow()) return false;
 
@@ -416,7 +412,7 @@ std::optional<SynthesizedSequence> Superoptimizer::searchIterativeDeepening(
 
         bool foundAtDepth = false;
 
-        enumerator_->enumerateIterativeDeepening(inst, pool, depth,
+        enumerator_->enumerateIterativeDeepening(inst.getType(), inputTypes, depth,
             [&](const SynthesizedSequence& candidate) -> bool {
                 if (shouldStopNow()) return false;
 
@@ -472,9 +468,6 @@ std::optional<SynthesizedSequence> Superoptimizer::searchStochastic(
     llvm::Instruction& inst,
     double currentCost) {
 
-    std::optional<SynthesizedSequence> best;
-    double bestCost = currentCost;
-
     auto& ctx = inst.getContext();
 
     std::vector<llvm::Type*> inputTypes;
@@ -484,42 +477,32 @@ std::optional<SynthesizedSequence> Superoptimizer::searchStochastic(
 
     ConstantPool pool = getConstantPool(inst);
 
-    stochasticEnumerator_->search(inst, pool, config_.stochasticIterations,
-        [&](const SynthesizedSequence& candidate) -> bool {
-            if (shouldStopNow()) return false;
+    // Cost function
+    auto costFn = [this](const SynthesizedSequence& candidate) -> double {
+        double cost = 0.0;
+        for (const auto& templ : candidate.templates) {
+            cost += costModel_->getDefaultCost(templ.opcode);
+        }
+        return cost;
+    };
 
-            stats_.candidatesGenerated++;
+    // Verification function
+    auto verifyFn = [this, &inst](const SynthesizedSequence& candidate) -> bool {
+        auto result = verifyCandidate(inst, candidate);
+        return result == VerificationResult::Equivalent;
+    };
 
-            double candidateCost = 0.0;
-            for (const auto& templ : candidate.templates) {
-                candidateCost += costModel_->getDefaultCost(templ.opcode);
-            }
+    auto result = stochasticEnumerator_->search(
+        inst.getType(), inputTypes, pool, costFn, verifyFn,
+        config_.stochasticIterations);
 
-            if (candidateCost >= bestCost) {
-                return true;
-            }
+    if (result && config_.debug) {
+        double cost = costFn(*result);
+        llvm::errs() << "Stochastic found: cost " << cost
+                    << " (was " << currentCost << ")\n";
+    }
 
-            auto verifyResult = verifyCandidate(inst, candidate);
-
-            if (verifyResult == VerificationResult::Equivalent) {
-                stats_.candidatesVerified++;
-
-                double improvement = costModel_->getImprovementRatio(currentCost, candidateCost);
-                if (improvement >= config_.minCostImprovement) {
-                    best = candidate;
-                    bestCost = candidateCost;
-
-                    if (config_.debug) {
-                        llvm::errs() << "Stochastic found: cost "
-                                    << candidateCost << " (was " << currentCost << ")\n";
-                    }
-                }
-            }
-
-            return true;
-        });
-
-    return best;
+    return result;
 }
 
 std::optional<SynthesizedSequence> Superoptimizer::searchHybrid(
@@ -585,7 +568,7 @@ ConstantPool Superoptimizer::getConstantPool(const llvm::Instruction& inst) {
             sc.value = const_cast<llvm::ConstantInt*>(ci);
             sc.intValue = ci->getSExtValue();
             sc.isPowerOfTwo = ci->getValue().isPowerOf2();
-            pool.constants.push_back(sc);
+            pool.add(sc);
         }
     }
 
@@ -629,7 +612,8 @@ void Superoptimizer::runPreOptimizations(llvm::Module& module) {
     pb.registerLoopAnalyses(lam);
     pb.crossRegisterProxies(lam, fam, cgam, mam);
 
-    llvm::ModulePassManager mpm = pb.buildO1ModuleOptimization();
+    // Build optimization pipeline
+    llvm::ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O1);
     mpm.run(module, mam);
 }
 

@@ -5,10 +5,10 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Format.h"
 #include "llvm/IR/LLVMContext.h"
 
 #include <iostream>
-#include <iomanip>
 
 using namespace llvm;
 using namespace superopt;
@@ -64,9 +64,9 @@ static cl::opt<bool> Debug(
     cl::desc("Debug output"),
     cl::init(false));
 
-static cl::opt<bool> Stats(
-    "stats",
-    cl::desc("Print statistics"),
+static cl::opt<bool> PrintStats(
+    "print-stats",
+    cl::desc("Print optimization statistics"),
     cl::init(false));
 
 static cl::opt<bool> DryRun(
@@ -86,17 +86,15 @@ void printBanner() {
     errs() << "╚═══════════════════════════════════════════════════════════════╝\n\n";
 }
 
-void printStats(const Stats& stats) {
+void printStatistics(const superopt::Stats& stats) {
     errs() << "\n=== Superoptimization Statistics ===\n";
     errs() << "  Functions processed: " << stats.functionsProcessed << "\n";
     errs() << "  Functions optimized: " << stats.functionsOptimized << "\n";
     errs() << "  Candidates generated: " << stats.candidatesGenerated << "\n";
     errs() << "  Candidates verified: " << stats.candidatesVerified << "\n";
     errs() << "  Candidates pruned: " << stats.candidatesPruned << "\n";
-    errs() << "  Total time: " << std::fixed << std::setprecision(2)
-           << stats.totalTimeSeconds << "s\n";
-    errs() << "  Total cost reduction: " << std::fixed << std::setprecision(2)
-           << stats.totalCostReduction << "\n";
+    errs() << "  Total time: " << llvm::format("%.2f", stats.totalTimeSeconds) << "s\n";
+    errs() << "  Total cost reduction: " << llvm::format("%.2f", stats.totalCostReduction) << "\n";
 }
 
 int main(int argc, char** argv) {
@@ -152,8 +150,8 @@ int main(int argc, char** argv) {
         for (auto& func : *module) {
             if (!func.isDeclaration()) {
                 double cost = costModel.getFunctionCost(func);
-                errs() << "  " << func.getName() << ": " << std::fixed
-                       << std::setprecision(2) << cost << "\n";
+                errs() << "  " << func.getName() << ": "
+                       << llvm::format("%.2f", cost) << "\n";
             }
         }
     }
@@ -162,9 +160,11 @@ int main(int argc, char** argv) {
     Superoptimizer superopt(config);
 
     if (Verbose) {
-        superopt.setProgressCallback([](const std::string& msg, double progress) {
-            errs() << "[" << std::fixed << std::setprecision(0)
-                   << (progress * 100) << "%] " << msg << "\n";
+        superopt.setProgressCallback([](const ProgressInfo& info) {
+            double progress = info.totalFunctions > 0 ?
+                (double)info.currentFunction / info.totalFunctions : 0.0;
+            errs() << "[" << llvm::format("%.0f", progress * 100) << "%] "
+                   << info.phase << ": " << info.currentItem << "\n";
         });
     }
 
@@ -181,15 +181,15 @@ int main(int argc, char** argv) {
         for (auto& func : *module) {
             if (!func.isDeclaration()) {
                 double cost = costModel.getFunctionCost(func);
-                errs() << "  " << func.getName() << ": " << std::fixed
-                       << std::setprecision(2) << cost << "\n";
+                errs() << "  " << func.getName() << ": "
+                       << llvm::format("%.2f", cost) << "\n";
             }
         }
     }
 
     // Print statistics
-    if (Stats || Verbose) {
-        printStats(superopt.getStats());
+    if (PrintStats || Verbose) {
+        printStatistics(superopt.getStats());
     }
 
     // Output result

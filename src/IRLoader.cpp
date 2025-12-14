@@ -120,7 +120,7 @@ std::unique_ptr<llvm::Module> IRLoader::cloneFunction(const llvm::Function& func
 
     // Clone the function
     llvm::ValueToValueMapTy vmap;
-    auto* cloned = llvm::CloneFunction(&func, vmap);
+    auto* cloned = llvm::CloneFunction(const_cast<llvm::Function*>(&func), vmap);
 
     // Insert into new module
     module->getFunctionList().push_back(cloned);

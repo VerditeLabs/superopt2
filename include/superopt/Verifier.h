@@ -13,6 +13,7 @@
 #include <random>
 #include <optional>
 #include <unordered_set>
+#include <map>
 
 namespace superopt {
 
@@ -276,9 +277,7 @@ public:
 private:
     Config config_;
     std::unordered_set<uint64_t> seenFingerprints_;
-    std::unordered_map<std::pair<size_t, size_t>,
-                       std::vector<std::vector<uint64_t>>,
-                       std::function<size_t(std::pair<size_t, size_t>)>> testVectorCache_;
+    std::map<std::pair<size_t, size_t>, std::vector<std::vector<uint64_t>>> testVectorCache_;
     std::mt19937_64 rng_;
 
     /// Evaluate sequence on test inputs

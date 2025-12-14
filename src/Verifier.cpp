@@ -93,8 +93,8 @@ bool DomainConstraints::isSafeInput(const TestInput& input,
                 templ.opcode == llvm::Instruction::SRem ||
                 templ.opcode == llvm::Instruction::URem) {
                 // The divisor operand
-                if (templ.operands.size() > 1) {
-                    int divisorOp = templ.operands[1];
+                if (templ.operandIndices.size() > 1) {
+                    int divisorOp = templ.operandIndices[1];
                     // If operand refers to input
                     if (divisorOp >= 0 && static_cast<size_t>(divisorOp) < input.rawValues.size()) {
                         if (input.rawValues[divisorOp] == 0) {
@@ -110,8 +110,8 @@ bool DomainConstraints::isSafeInput(const TestInput& input,
             if (templ.opcode == llvm::Instruction::Shl ||
                 templ.opcode == llvm::Instruction::LShr ||
                 templ.opcode == llvm::Instruction::AShr) {
-                if (templ.operands.size() > 1) {
-                    int shiftOp = templ.operands[1];
+                if (templ.operandIndices.size() > 1) {
+                    int shiftOp = templ.operandIndices[1];
                     // Conservative: check if input value could cause overflow
                     if (shiftOp >= 0 && static_cast<size_t>(shiftOp) < input.rawValues.size()) {
                         // Assume 64-bit max for now
@@ -559,12 +559,8 @@ std::optional<llvm::GenericValue> Verifier::execute(
         return std::nullopt;
     }
 
-    try {
-        return engine->runFunction(clonedFunc, input.values);
-    } catch (...) {
-        lastError_ = "Execution threw exception";
-        return std::nullopt;
-    }
+    // Execute function - note: exceptions disabled in LLVM build
+    return engine->runFunction(clonedFunc, input.values);
 }
 
 bool Verifier::valuesEqual(const llvm::GenericValue& a,
@@ -751,9 +747,9 @@ bool AlgebraicVerifier::isStrengthReduction(const llvm::Instruction& original,
                     // It's a power of 2
                     unsigned log2Val = 63 - __builtin_clzll(mulVal);
                     // Check if candidate shifts by this amount
-                    if (templ.constantIndex >= 0 &&
-                        static_cast<size_t>(templ.constantIndex) < candidate.constants.size()) {
-                        if (candidate.constants[templ.constantIndex].intValue == static_cast<int64_t>(log2Val)) {
+                    if (!templ.constantIndices.empty() && templ.constantIndices[0] >= 0 &&
+                        static_cast<size_t>(templ.constantIndices[0]) < candidate.constants.size()) {
+                        if (candidate.constants[templ.constantIndices[0]].intValue == static_cast<int64_t>(log2Val)) {
                             return true;
                         }
                     }
@@ -770,9 +766,9 @@ bool AlgebraicVerifier::isStrengthReduction(const llvm::Instruction& original,
                 uint64_t divVal = c->getZExtValue();
                 if (divVal > 0 && (divVal & (divVal - 1)) == 0) {
                     unsigned log2Val = 63 - __builtin_clzll(divVal);
-                    if (templ.constantIndex >= 0 &&
-                        static_cast<size_t>(templ.constantIndex) < candidate.constants.size()) {
-                        if (candidate.constants[templ.constantIndex].intValue == static_cast<int64_t>(log2Val)) {
+                    if (!templ.constantIndices.empty() && templ.constantIndices[0] >= 0 &&
+                        static_cast<size_t>(templ.constantIndices[0]) < candidate.constants.size()) {
+                        if (candidate.constants[templ.constantIndices[0]].intValue == static_cast<int64_t>(log2Val)) {
                             return true;
                         }
                     }
@@ -791,10 +787,10 @@ bool AlgebraicVerifier::checkZeroIdentity(const SynthesizedSequence& seq,
     if (t.opcode != opcode) return false;
 
     // Check if one operand is constant 0
-    for (size_t i = 0; i < t.operands.size(); ++i) {
-        if (t.operands[i] < 0) {
+    for (size_t i = 0; i < t.operandIndices.size(); ++i) {
+        if (t.operandIndices[i] < 0) {
             // It's a constant reference
-            int constIdx = -t.operands[i] - 1;
+            int constIdx = -t.operandIndices[i] - 1;
             if (constIdx >= 0 && static_cast<size_t>(constIdx) < seq.constants.size()) {
                 if (seq.constants[constIdx].intValue == 0) {
                     return true;
@@ -811,9 +807,9 @@ bool AlgebraicVerifier::checkOneIdentity(const SynthesizedSequence& seq,
     const auto& t = seq.templates[0];
     if (t.opcode != opcode) return false;
 
-    for (size_t i = 0; i < t.operands.size(); ++i) {
-        if (t.operands[i] < 0) {
-            int constIdx = -t.operands[i] - 1;
+    for (size_t i = 0; i < t.operandIndices.size(); ++i) {
+        if (t.operandIndices[i] < 0) {
+            int constIdx = -t.operandIndices[i] - 1;
             if (constIdx >= 0 && static_cast<size_t>(constIdx) < seq.constants.size()) {
                 if (seq.constants[constIdx].intValue == 1) {
                     return true;
@@ -831,8 +827,8 @@ bool AlgebraicVerifier::checkSelfIdentity(const SynthesizedSequence& seq,
     if (t.opcode != opcode) return false;
 
     // Check if both operands are the same input
-    if (t.operands.size() >= 2) {
-        return t.operands[0] == t.operands[1] && t.operands[0] >= 0;
+    if (t.operandIndices.size() >= 2) {
+        return t.operandIndices[0] == t.operandIndices[1] && t.operandIndices[0] >= 0;
     }
     return false;
 }
@@ -843,9 +839,9 @@ bool AlgebraicVerifier::checkNegOneIdentity(const SynthesizedSequence& seq,
     const auto& t = seq.templates[0];
     if (t.opcode != opcode) return false;
 
-    for (size_t i = 0; i < t.operands.size(); ++i) {
-        if (t.operands[i] < 0) {
-            int constIdx = -t.operands[i] - 1;
+    for (size_t i = 0; i < t.operandIndices.size(); ++i) {
+        if (t.operandIndices[i] < 0) {
+            int constIdx = -t.operandIndices[i] - 1;
             if (constIdx >= 0 && static_cast<size_t>(constIdx) < seq.constants.size()) {
                 if (seq.constants[constIdx].intValue == -1) {
                     return true;
@@ -992,9 +988,6 @@ VerificationResult HybridVerifier::verify(const llvm::Instruction& original,
 
 ObservationalEquivalence::ObservationalEquivalence(const Config& config)
     : config_(config),
-      testVectorCache_([](std::pair<size_t, size_t> p) {
-          return std::hash<size_t>()(p.first) ^ (std::hash<size_t>()(p.second) << 1);
-      }),
       rng_(std::random_device{}()) {}
 
 uint64_t ObservationalEquivalence::computeFingerprint(
@@ -1100,9 +1093,9 @@ std::vector<uint64_t> ObservationalEquivalence::evaluate(
         for (const auto& templ : seq.templates) {
             uint64_t result = 0;
 
-            if (templ.operands.size() >= 2) {
-                size_t op0Idx = templ.operands[0] >= 0 ? templ.operands[0] : inputVec.size() + (-templ.operands[0] - 1);
-                size_t op1Idx = templ.operands[1] >= 0 ? templ.operands[1] : inputVec.size() + (-templ.operands[1] - 1);
+            if (templ.operandIndices.size() >= 2) {
+                size_t op0Idx = templ.operandIndices[0] >= 0 ? templ.operandIndices[0] : inputVec.size() + (-templ.operandIndices[0] - 1);
+                size_t op1Idx = templ.operandIndices[1] >= 0 ? templ.operandIndices[1] : inputVec.size() + (-templ.operandIndices[1] - 1);
 
                 uint64_t op0 = op0Idx < values.size() ? values[op0Idx] : 0;
                 uint64_t op1 = op1Idx < values.size() ? values[op1Idx] : 0;

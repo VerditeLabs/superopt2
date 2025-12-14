@@ -8,6 +8,7 @@
 
 #include <unordered_set>
 #include <unordered_map>
+#include <map>
 
 namespace superopt {
 
@@ -85,9 +86,7 @@ public:
 
 private:
     Config config_;
-    std::unordered_map<std::pair<size_t, size_t>,
-                       std::vector<std::vector<uint64_t>>,
-                       std::function<size_t(std::pair<size_t, size_t>)>> testInputCache_;
+    std::map<std::pair<size_t, size_t>, std::vector<std::vector<uint64_t>>> testInputCache_;
     std::mt19937_64 rng_;
 };
 

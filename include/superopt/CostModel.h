@@ -67,6 +67,9 @@ public:
     /// Get cost improvement ratio (original - optimized) / original
     double getImprovementRatio(double originalCost, double optimizedCost);
 
+    /// Get default cost for an opcode
+    double getDefaultCost(unsigned opcode);
+
 private:
     llvm::TargetTransformInfo* tti_ = nullptr;
 
@@ -75,9 +78,6 @@ private:
 
     /// Initialize default costs
     void initDefaultCosts();
-
-    /// Get default cost for an opcode
-    double getDefaultCost(unsigned opcode);
 };
 
 } // namespace superopt
